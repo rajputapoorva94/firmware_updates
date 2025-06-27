@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout firmware-updates
+      - name: Checkout firmware_updates
         uses: actions/checkout@v4
 
       - name: Set tag name
