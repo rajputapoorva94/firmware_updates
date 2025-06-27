@@ -1,0 +1,75 @@
+name: Update Firmware Metadata
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  update-metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout firmware-repo
+        uses: actions/checkout@v4
+
+      - name: Set tag name
+        run: echo "TAG_NAME=v1.0.0" >> $GITHUB_ENV
+
+      - name: Get release info
+        id: release
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          result-encoding: string
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: process.env.TAG_NAME
+            });
+            core.setOutput('result', JSON.stringify(release.data));
+        env:
+          TAG_NAME: ${{ env.TAG_NAME }}
+
+      - name: Generate firmware.json
+        id: generate
+        run: |
+          echo '${{ steps.release.outputs.result }}' > release.json
+          echo "{" > firmware.json
+          echo "  \"version\": \"$TAG_NAME\"," >> firmware.json
+          echo "  \"firmwares\": {" >> firmware.json
+          ASSETS=$(jq -r '.assets[] | "\(.name)|\(.browser_download_url)"' release.json)
+          COUNT=$(echo "$ASSETS" | wc -l)
+          IDX=0
+          echo "$ASSETS" | while IFS='|' read -r name url; do
+            device=$(echo "$name" | cut -d'_' -f1)
+            echo "    \"$device\": {" >> firmware.json
+            echo "      \"filename\": \"$name\"," >> firmware.json
+            echo "      \"url\": \"$url\"" >> firmware.json
+            if [ "$IDX" -lt $((COUNT - 1)) ]; then
+              echo "    }," >> firmware.json
+            else
+              echo "    }" >> firmware.json
+            fi
+            IDX=$((IDX + 1))
+          done
+          echo "  }" >> firmware.json
+          echo "}" >> firmware.json
+
+      - name: Clone firmware-meta repo
+        uses: actions/checkout@v4
+        with:
+          repository: rajputapoorva94/firmware-meta
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: meta
+
+      - name: Copy and Commit firmware.json
+        run: |
+          cp firmware.json meta/
+          cd meta
+          git config user.name "GitHub Action"
+          git config user.email "actions@github.com"
+          git add firmware.json
+          git commit -m "Update firmware metadata for $TAG_NAME" || echo "No changes to commit"
+          git push
