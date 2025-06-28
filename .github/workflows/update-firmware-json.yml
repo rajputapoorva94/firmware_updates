@@ -28,9 +28,7 @@ jobs:
             else
               echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
             fi
-            env;
-            GITHUB_ENV: ${{ github.env }}
-
+            
       - name: Get release info
         id: release
         uses: actions/github-script@v6
@@ -57,8 +55,8 @@ jobs:
                [ .assets[] | { key: (.name | split("_")[0]), value: { filename: .name, url: .browser_download_url } } ]
                | from_entries
              )
-          }' < release.json | jq -s '.[0] + .[1]' --argjson release '${{ steps.release.outputs.result }}' --arg tag_name "$TAG_NAME" --arg version "${{ steps.release.outputs.result.version }}" --arg date "${{ steps.release.outputs.result.published_at }}" --arg body "${{ steps.release.outputs.result.body }}" |
-           ' release.json > firmware.json
+          }
+          ' release.json > firmware.json
       - name: Clone firmware-meta repo
         uses: actions/checkout@v4
         with:
