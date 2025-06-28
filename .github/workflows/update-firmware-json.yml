@@ -21,7 +21,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Set tag name
-        run: echo "TAG_NAME=v2.0.0" >> $GITHUB_ENV
+        run: |
+
+            if [ "${{ github.event_name }}" = "release" ]; then
+              echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+            else
+              echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+            fi
+            env;
+            GITHUB_ENV: ${{ github.env }}
 
       - name: Get release info
         id: release
@@ -40,30 +48,17 @@ jobs:
           TAG_NAME: ${{ env.TAG_NAME }}
 
       - name: Generate firmware.json
-        id: generate
         run: |
           echo '${{ steps.release.outputs.result }}' > release.json
-          echo "{" > firmware.json
-          echo "  \"version\": \"$TAG_NAME\"," >> firmware.json
-          echo "  \"firmwares\": {" >> firmware.json
-          ASSETS=$(jq -r '.assets[] | "\(.name)|\(.browser_download_url)"' release.json)
-          COUNT=$(echo "$ASSETS" | wc -l)
-          IDX=0
-          echo "$ASSETS" | while IFS='|' read -r name url; do
-            device=$(echo "$name" | cut -d'_' -f1)
-            echo "    \"$device\": {" >> firmware.json
-            echo "      \"filename\": \"$name\"," >> firmware.json
-            echo "      \"url\": \"$url\"" >> firmware.json
-            if [ "$IDX" -lt $((COUNT - 1)) ]; then
-              echo "    }," >> firmware.json
-            else
-              echo "    }" >> firmware.json
-            fi
-            IDX=$((IDX + 1))
-          done
-          echo "  }" >> firmware.json
-          echo "}" >> firmware.json
-
+           jq -r --arg version "$TAG_NAME" '
+          {
+              version: $version,
+              firmwares: (
+               [ .assets[] | { key: (.name | split("_")[0]), value: { filename: .name, url: .browser_download_url } } ]
+               | from_entries
+             )
+          }' < release.json | jq -s '.[0] + .[1]' --argjson release '${{ steps.release.outputs.result }}' --arg tag_name "$TAG_NAME" --arg version "${{ steps.release.outputs.result.version }}" --arg date "${{ steps.release.outputs.result.published_at }}" --arg body "${{ steps.release.outputs.result.body }}" |
+           ' release.json > firmware.json
       - name: Clone firmware-meta repo
         uses: actions/checkout@v4
         with:
