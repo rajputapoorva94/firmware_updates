@@ -39,22 +39,20 @@ jobs:
           github-token: ${{ secrets.PAT_TOKEN }}
           result-encoding: string
           script: |
-            console.log("TAG_NAME:", process.env.TAG_NAME);
-            try {
-              const release = await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag: process.env.TAG_NAME
-              });
-              console.log("Found release:", release.data);
-              core.setOutput('result', JSON.stringify(release.data));
-            } catch (e) {
-              console.log("Error fetching release:", e);
-              core.setFailed(`Failed to fetch release for tag: ${process.env.TAG_NAME}. Error: ${e.message}`);
-              throw e;
-            }
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: process.env.TAG_NAME
+            });
+            // Ensure release.data is a string
+            const json = JSON.stringify(release.data);
+            core.setOutput('result', json);
+            return json;
         env:
           TAG_NAME: ${{ env.TAG_NAME }}
+
+      - name: Print release step output
+        run: echo "release.outputs.result=${{ steps.release.outputs.result }}"
 
       - name: Write release.json
         run: |
