@@ -21,6 +21,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Set tag name
+        id: set_tag
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
@@ -38,14 +39,17 @@ jobs:
           github-token: ${{ secrets.PAT_TOKEN }}
           result-encoding: string
           script: |
+            console.log("TAG_NAME:", process.env.TAG_NAME);
             try {
               const release = await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 tag: process.env.TAG_NAME
               });
+              console.log("Found release:", release.data);
               core.setOutput('result', JSON.stringify(release.data));
             } catch (e) {
+              console.log("Error fetching release:", e);
               core.setFailed(`Failed to fetch release for tag: ${process.env.TAG_NAME}. Error: ${e.message}`);
               throw e;
             }
@@ -53,14 +57,18 @@ jobs:
           TAG_NAME: ${{ env.TAG_NAME }}
 
       - name: Write release.json
-        run: echo '${{ steps.release.outputs.result }}' > release.json
+        run: |
+          if [ -z "${{ steps.release.outputs.result }}" ]; then
+            echo '{}' > release.json
+          else
+            echo '${{ steps.release.outputs.result }}' > release.json
+          fi
 
       - name: Debug release.json
         run: cat release.json
 
       - name: Generate firmware.json
         run: |
-          # Check if release.json is valid JSON
           if jq empty release.json; then
             jq -r --arg version "$TAG_NAME" '
               {
