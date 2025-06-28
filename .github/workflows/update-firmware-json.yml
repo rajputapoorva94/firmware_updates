@@ -28,6 +28,9 @@ jobs:
             else
               echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
             fi
+
+      - name: Debug tag name
+        run: echo "TAG_NAME is $TAG_NAME "
             
       - name: Get release info
         id: release
@@ -36,19 +39,33 @@ jobs:
           github-token: ${{ secrets.PAT_TOKEN }}
           result-encoding: string
           script: |
-            const release = await github.rest.repos.getReleaseByTag({
+            try {
+              const release = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag: process.env.TAG_NAME
             });
             core.setOutput('result', JSON.stringify(release.data));
-        env:
-          TAG_NAME: ${{ env.TAG_NAME }}
+            } catch (e) {
+            core.setFailed(`Failed to fetch release for tag: ${process.env.TAG_NAME}. Error: ${e.message}`);
+            throw e;
+            }
+      
+      - name: Write release.json
+        run: echo '${{ steps.release.outputs.result }}' > release.json
+
+      - name: Debug release.json
+        run: cat release.json
 
       - name: Generate firmware.json
         run: |
           echo '${{ steps.release.outputs.result }}' > release.json
-           jq -r --arg version "$TAG_NAME" '
+          # Debug: print contents
+          cat release.json
+
+          # Check if file is valid JSON and not empty
+          if ! jq empty release.json; then
+          jq -r --arg version "$TAG_NAME" '
           {
               version: $version,
               firmwares: (
@@ -57,6 +74,7 @@ jobs:
              )
           }
           ' release.json > firmware.json
+
       - name: Clone firmware-meta repo
         uses: actions/checkout@v4
         with:
